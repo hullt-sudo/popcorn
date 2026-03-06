@@ -1,0 +1,1428 @@
+import { useState, useEffect, useRef } from "react";
+
+// ─── KERNEL SKINS ────────────────────────────────────────────
+const KERNELS = [
+  { id:"classic", name:"Classic",   rarity:"rare",      color:"#F5DEB3", accent:"#D4A853", emoji:"🍿" },
+  { id:"golden",  name:"Golden",    rarity:"rare",      color:"#FFD700", accent:"#FFA500", emoji:"✨" },
+  { id:"pink",    name:"Rosy",      rarity:"rare",      color:"#FFB6C1", accent:"#FF69B4", emoji:"🌸" },
+  { id:"blue",    name:"Blueberry", rarity:"rare",      color:"#87CEEB", accent:"#4169E1", emoji:"💙" },
+  { id:"green",   name:"Herb",      rarity:"rare",      color:"#90EE90", accent:"#228B22", emoji:"🌿" },
+  { id:"purple",  name:"Violet",    rarity:"super_rare",color:"#DDA0DD", accent:"#8B008B", emoji:"💜" },
+  { id:"spicy",   name:"Spicy",     rarity:"super_rare",color:"#FF6347", accent:"#FF8C00", emoji:"🌶️" },
+  { id:"ice",     name:"Ice",       rarity:"super_rare",color:"#B0E0E6", accent:"#00BFFF", emoji:"❄️" },
+  { id:"toxic",   name:"Toxic",     rarity:"super_rare",color:"#ADFF2F", accent:"#006400", emoji:"☠️" },
+  { id:"night",   name:"Midnight",  rarity:"super_rare",color:"#2C2C54", accent:"#A29BFE", emoji:"🌙" },
+  { id:"galaxy",  name:"Galaxy",    rarity:"epic",      color:"#1a1a2e", accent:"#e94560", emoji:"🌌" },
+  { id:"rainbow", name:"Rainbow",   rarity:"epic",      color:"#FF6B6B", accent:"#4ECDC4", emoji:"🌈" },
+  { id:"lava",    name:"Lava",      rarity:"epic",      color:"#8B0000", accent:"#FF4500", emoji:"🌋" },
+  { id:"cyber",   name:"Cyber",     rarity:"epic",      color:"#00FF41", accent:"#003B00", emoji:"🤖" },
+  { id:"crystal", name:"Crystal",   rarity:"epic",      color:"#E0FFFF", accent:"#00CED1", emoji:"💎" },
+  { id:"shadow",  name:"Shadow",    rarity:"mythic",    color:"#1C1C1C", accent:"#FF00FF", emoji:"👁️" },
+  { id:"storm",   name:"Storm",     rarity:"mythic",    color:"#36454F", accent:"#00FFFF", emoji:"⚡" },
+  { id:"dragon",  name:"Dragon",    rarity:"mythic",    color:"#8B0000", accent:"#FFD700", emoji:"🐉" },
+  { id:"angel",   name:"Angel",     rarity:"legendary", color:"#FFFACD", accent:"#FFD700", emoji:"👼" },
+  { id:"void",    name:"Void",      rarity:"legendary", color:"#0D0D0D", accent:"#FF00FF", emoji:"🌀" },
+];
+const RARITY = {
+  rare:       {label:"Rare",       stars:1, color:"#4FC3F7", bg:"#0D47A1", glow:"#4FC3F7", chance:.45},
+  super_rare: {label:"Super Rare", stars:2, color:"#CE93D8", bg:"#4A148C", glow:"#CE93D8", chance:.30},
+  epic:       {label:"Epic",       stars:3, color:"#FF8A65", bg:"#BF360C", glow:"#FF8A65", chance:.15},
+  mythic:     {label:"Mythic",     stars:4, color:"#F48FB1", bg:"#880E4F", glow:"#F48FB1", chance:.07},
+  legendary:  {label:"Legendary",  stars:5, color:"#FFD700", bg:"#7B5800", glow:"#FFD700", chance:.03},
+};
+const ABILITIES = [
+  {id:"shield", name:"Shield",        desc:"Block 1 hit",            icon:"🛡️", color:"#4FC3F7"},
+  {id:"heal",   name:"Heal",          desc:"Absorb shot → +1 HP",    icon:"💚", color:"#66BB6A"},
+  {id:"catch",  name:"Catch & Throw", desc:"Catch & reflect back",   icon:"🤾", color:"#FFA726"},
+];
+const GAME_MODES = [
+  {id:"solo",   label:"Solo",   teamSize:1, icon:"👤"},
+  {id:"duo",    label:"Duo",    teamSize:2, icon:"👥"},
+  {id:"trio",   label:"Trio",   teamSize:3, icon:"🎯"},
+  {id:"squads", label:"Squads", teamSize:4, icon:"🛡️"},
+  {id:"chaos",  label:"Chaos",  teamSize:5, icon:"💥"},
+];
+
+// ── BOSS DEFINITIONS ──────────────────────────────────────────
+// Waves: boss stays at CENTER and fires timed projectile bursts.
+// Each boss has 4 phases. Each phase has a list of "waves" that loop.
+// Wave types: radial, spiral, aimed, rain, burst, sweep
+// difficulty ramps: speed up, more projectiles, tighter patterns
+const BOSSES = [
+  {
+    id:"butter", name:"Butter Boss", icon:"🧈", color:"#FFD700", proj:"#FFE566",
+    // Phase durations in ms
+    phaseDur: [9000, 8000, 7000, 6000],
+    phases: [
+      // Phase 1 – very slow radial pops every 3s, easy to dodge
+      [
+        {type:"radial", delay:3000,  count:5,  spd:1.8, size:7},
+        {type:"radial", delay:3000,  count:5,  spd:1.8, size:7},
+        {type:"radial", delay:3000,  count:5,  spd:1.8, size:7},
+        {type:"aimed",  delay:2500,  count:2,  spd:2.0, size:7, spread:.3},
+      ],
+      // Phase 2 – more shots, slightly faster
+      [
+        {type:"radial", delay:2200,  count:7,  spd:2.2, size:7},
+        {type:"aimed",  delay:1800,  count:3,  spd:2.4, size:7, spread:.35},
+        {type:"radial", delay:2000,  count:8,  spd:2.2, size:7},
+        {type:"aimed",  delay:1800,  count:3,  spd:2.4, size:7, spread:.35},
+      ],
+      // Phase 3 – spiral starts
+      [
+        {type:"spiral", delay:90,    count:2,  spd:2.6, size:7},
+        {type:"aimed",  delay:1500,  count:4,  spd:2.8, size:7, spread:.3},
+      ],
+      // Phase 4 – faster spiral + burst
+      [
+        {type:"spiral", delay:70,    count:3,  spd:3.0, size:7},
+        {type:"burst",  delay:2000,  count:10, spd:3.0, size:7},
+      ],
+    ],
+  },
+  {
+    id:"salt", name:"Salt Boss", icon:"🧂", color:"#E8E8FF", proj:"#EEEEFF",
+    phaseDur:[8000,7000,6500,6000],
+    phases:[
+      [
+        {type:"rain",   delay:3500,  count:4,  spd:2.5, size:6},
+        {type:"aimed",  delay:2200,  count:3,  spd:2.8, size:6, spread:.3},
+      ],
+      [
+        {type:"rain",   delay:2500,  count:5,  spd:2.8, size:6},
+        {type:"radial", delay:2000,  count:8,  spd:2.8, size:6},
+      ],
+      [
+        {type:"rain",   delay:2000,  count:6,  spd:3.0, size:6},
+        {type:"spiral", delay:80,    count:2,  spd:3.0, size:6},
+        {type:"aimed",  delay:1500,  count:4,  spd:3.2, size:6, spread:.25},
+      ],
+      [
+        {type:"burst",  delay:1500,  count:14, spd:3.4, size:6},
+        {type:"rain",   delay:1800,  count:6,  spd:3.2, size:6},
+        {type:"spiral", delay:60,    count:3,  spd:3.4, size:6},
+      ],
+    ],
+  },
+  {
+    id:"fire", name:"Fire Boss", icon:"🔥", color:"#FF4500", proj:"#FF6600",
+    phaseDur:[8000,7000,6500,5500],
+    phases:[
+      [
+        {type:"spiral", delay:80,    count:3,  spd:3.2, size:7},
+        {type:"aimed",  delay:1400,  count:5,  spd:3.4, size:7, spread:.2},
+      ],
+      [
+        {type:"spiral", delay:65,    count:4,  spd:3.6, size:7},
+        {type:"burst",  delay:1800,  count:12, spd:3.6, size:7},
+      ],
+      [
+        {type:"spiral", delay:50,    count:5,  spd:4.0, size:7},
+        {type:"aimed",  delay:1000,  count:6,  spd:4.0, size:7, spread:.18},
+      ],
+      [
+        {type:"spiral", delay:40,    count:6,  spd:4.4, size:7},
+        {type:"burst",  delay:1400,  count:16, spd:4.5, size:7},
+        {type:"aimed",  delay:900,   count:6,  spd:4.4, size:7, spread:.15},
+      ],
+    ],
+  },
+  {
+    id:"microwave", name:"Microwave Boss", icon:"📡", color:"#00E5FF", proj:"#00FFFF",
+    phaseDur:[7500,6500,6000,5000],
+    phases:[
+      [
+        {type:"radial", delay:1200,  count:10, spd:4.0, size:7},
+        {type:"spiral", delay:45,    count:4,  spd:4.0, size:7},
+      ],
+      [
+        {type:"burst",  delay:1200,  count:18, spd:4.5, size:7},
+        {type:"spiral", delay:35,    count:5,  spd:4.5, size:7},
+      ],
+      [
+        {type:"aimed",  delay:600,   count:7,  spd:5.0, size:7, spread:.15},
+        {type:"radial", delay:900,   count:14, spd:5.0, size:7},
+        {type:"spiral", delay:30,    count:5,  spd:5.0, size:7},
+      ],
+      [
+        {type:"spiral", delay:25,    count:7,  spd:5.5, size:8},
+        {type:"burst",  delay:800,   count:22, spd:5.5, size:8},
+        {type:"aimed",  delay:500,   count:8,  spd:5.5, size:8, spread:.12},
+      ],
+    ],
+  },
+];
+
+// ─── HELPERS ──────────────────────────────────────────────────
+function rndOf(a){return a[Math.floor(Math.random()*a.length)];}
+function rndKernel(){return rndOf(KERNELS);}
+function rndBotName(){return rndOf(["PopBot","KernBot","CornBot","HeatBot","ZapBot","FizzBot","BlazeBot","SizzleBot","ButterBot","SaltBot","ToastBot","SparkBot","CrispBot","VaporBot"])+Math.floor(Math.random()*999);}
+function genCode(){return Math.random().toString(36).substr(2,6).toUpperCase();}
+function d2(a,b){const dx=a.x-b.x,dy=a.y-b.y;return dx*dx+dy*dy;}
+// rollChest: placement = finishing position (1=winner, 60=first out)
+// Bad placement = mostly Rare junk. Good placement = real shot at Legendary.
+//
+//  Placement  Legendary  Mythic  Epic  SuperRare  Rare
+//  #1 winner    18%       14%    20%     22%       26%
+//  Top 5        10%        9%    18%     28%       35%
+//  Top 10        5%        6%    14%     30%       45%
+//  Top 20        2%        4%    10%     28%       56%
+//  Top 40        1%        2%     6%     21%       70%
+//  Bottom 20   0.5%        1%     3%     15%     80.5%  ← mostly trash
+function rollChest(placement=60){
+  const p = placement;
+  let chances;
+  if(p===1){
+    chances={legendary:.18,mythic:.14,epic:.20,super_rare:.22,rare:.26};
+  } else if(p<=5){
+    chances={legendary:.10,mythic:.09,epic:.18,super_rare:.28,rare:.35};
+  } else if(p<=10){
+    chances={legendary:.05,mythic:.06,epic:.14,super_rare:.30,rare:.45};
+  } else if(p<=20){
+    chances={legendary:.02,mythic:.04,epic:.10,super_rare:.28,rare:.56};
+  } else if(p<=40){
+    chances={legendary:.01,mythic:.02,epic:.06,super_rare:.21,rare:.70};
+  } else {
+    chances={legendary:.005,mythic:.01,epic:.03,super_rare:.155,rare:.80}; // bottom 20 — mostly junk
+  }
+  const total=Object.values(chances).reduce((s,v)=>s+v,0);
+  let r=Math.random()*total, cum=0;
+  for(const [k,v] of Object.entries(chances)){
+    cum+=v; if(r<cum){ const pool=KERNELS.filter(x=>x.rarity===k); return rndOf(pool); }
+  }
+  return KERNELS[0];
+}
+
+// Get the odds table row for a given placement (for display)
+function getOddsForPlacement(p){
+  if(p===1)      return {legendary:18,mythic:14,epic:20,super_rare:22,rare:26};
+  if(p<=5)       return {legendary:10,mythic:9, epic:18,super_rare:28,rare:35};
+  if(p<=10)      return {legendary:5, mythic:6, epic:14,super_rare:30,rare:45};
+  if(p<=20)      return {legendary:2, mythic:4, epic:10,super_rare:28,rare:56};
+  if(p<=40)      return {legendary:1, mythic:2, epic:6, super_rare:21,rare:70};
+  return              {legendary:0.5,mythic:1, epic:3, super_rare:15.5,rare:80};
+}
+
+// ─── WORLD ────────────────────────────────────────────────────
+const PAN_R  = 640;          // pan cooking surface radius (world units)
+const CX = 800, CY = 800;    // world center = boss position
+const ZOOM   = 2.4;          // zoomed out — 4 corners of view show area around player
+const LERP   = 0.08;         // camera smoothness
+
+function clampPan(e){
+  const m=e.r+3, dx=e.x-CX, dy=e.y-CY, dist=Math.sqrt(dx*dx+dy*dy), lim=PAN_R-m;
+  if(dist>lim){const f=lim/dist; e.x=CX+dx*f; e.y=CY+dy*f;}
+}
+
+// ─── GAME ─────────────────────────────────────────────────────
+function GameCanvas({playerKernel, ability, gameMode, onGameEnd}){
+  const canvasRef = useRef(null);
+  const keysRef   = useRef({});
+  const touchRef  = useRef({joyX:0, joyY:0, abil:false});
+  const joyRef    = useRef({active:false, sx:0, sy:0});
+  const animRef   = useRef(null);
+  const camRef    = useRef(null);  // initialised after spawn inside useEffect
+
+  useEffect(()=>{
+    const canvas = canvasRef.current;
+    const ctx    = canvas.getContext("2d");
+    const W = canvas.width, H = canvas.height;
+
+    // ── game state
+    const TOTAL = 60;
+    let frame = 0, gameOver = false, won = false;
+    let survivors = TOTAL;
+    let bossIdx = 0, phaseIdx = 0;
+    let phaseMs = 0;                    // elapsed ms in current phase
+    let bossDefeated = [false,false,false,false];
+    let betweenBosses = false;          // short pause between bosses
+    let betweenTimer = 0;
+    let killFeed = [];
+    let abilCD = 0;
+    const ABIL_MAX = 220;
+
+    // ── per-wave timers: [{elapsed, waveIndex, waveList}]
+    // We run ALL waves in a phase simultaneously, each with its own countdown
+    let waveTimers = [];   // [{idx, cd}]
+    let spiralAngle = 0;
+    let rainCol = 0;
+
+    function initPhase(){
+      const waves = BOSSES[bossIdx].phases[phaseIdx];
+      waveTimers = waves.map((w,i)=>({i, cd: i*400})); // stagger start slightly
+      spiralAngle = 0; rainCol = 0;
+      phaseMs = 0;
+    }
+    initPhase();
+
+    // ── spawn helpers
+    function spawnInPan(margin=55){
+      for(let t=0;t<400;t++){
+        const a=Math.random()*Math.PI*2, r=margin+Math.random()*(PAN_R-margin-40);
+        const x=CX+Math.cos(a)*r, y=CY+Math.sin(a)*r;
+        if((x-CX)**2+(y-CY)**2<(PAN_R-40)**2) return {x,y};
+      }
+      return {x:CX+200, y:CY};
+    }
+
+    // ── team mode?
+    const isTeamMode = gameMode !== "solo";
+
+    // ── player
+    const {x:px,y:py} = spawnInPan(80);
+
+    // Camera starts exactly at player so the 4 corners of the canvas show the world around them
+    if(!camRef.current) camRef.current = {x:px, y:py};
+    else { camRef.current.x = px; camRef.current.y = py; }
+    const cam = camRef.current;
+
+    const player = {
+      x:px, y:py, r:12, hp:2, maxHp:2,
+      speed:2.1, angle:0,
+      shieldOn:false, shieldT:0,
+      healOn:false,   healT:0,
+      catchOn:false,  catchT:0,
+      alive:true, invT:0,
+      // downed (crawling) state — team modes only
+      downed:false, downTimer:0,   // downTimer counts from 420 (7s at 60fps) to 0
+      reviveT:0,                   // counts up when a bot is near, resets if they leave
+      color:playerKernel.color, accent:playerKernel.accent, emoji:playerKernel.emoji,
+    };
+
+    // ── bots – they wander and try to dodge nearby projectiles
+    const bots = Array.from({length:TOTAL-1},(_,i)=>{
+      const k=rndKernel(), {x,y}=spawnInPan(60);
+      return {
+        id:i, x, y, r:10, hp:2, maxHp:2, alive:true, invT:0,
+        color:k.color, accent:k.accent, emoji:k.emoji, name:rndBotName(),
+        speed:1.0+Math.random()*0.8,
+        wanderA:Math.random()*Math.PI*2, wanderT:0,
+        dodgeA:0, dodgeT:0,
+      };
+    });
+
+    // ── projectiles & particles
+    const projs=[], parts=[];
+
+    function burst(x,y,color,n=10){
+      for(let i=0;i<n;i++){
+        const a=Math.random()*Math.PI*2, s=1+Math.random()*4;
+        parts.push({x,y,dx:Math.cos(a)*s,dy:Math.sin(a)*s,life:30+Math.random()*20,color,r:1.5+Math.random()*3});
+      }
+    }
+    function addProj(x,y,angle,color,spd,rad){
+      projs.push({x,y,dx:Math.cos(angle)*spd,dy:Math.sin(angle)*spd,color,r:rad,life:380});
+    }
+
+    // ── fire one wave entry from the boss (center)
+    function fireWave(wIdx){
+      const w = BOSSES[bossIdx].phases[phaseIdx][wIdx];
+      const c = BOSSES[bossIdx].proj;
+      const {type,count,spd,size,spread} = w;
+
+      if(type==="radial"){
+        // Evenly spaced ring, random starting angle for variety
+        const offset = Math.random()*Math.PI*2;
+        for(let i=0;i<count;i++)
+          addProj(CX,CY, offset+Math.PI*2*i/count, c, spd, size);
+      }
+      else if(type==="spiral"){
+        // Fire ONE arm each call; spiral angle increments
+        for(let arm=0;arm<count;arm++)
+          addProj(CX,CY, spiralAngle+Math.PI*2*arm/count, c, spd, size);
+        spiralAngle += 0.22;
+      }
+      else if(type==="aimed"){
+        // Fan aimed at player
+        const base = Math.atan2(player.y-CY, player.x-CX);
+        for(let i=0;i<count;i++){
+          const off = (i-(count-1)/2)*(spread||0.3);
+          addProj(CX,CY, base+off, c, spd, size);
+        }
+      }
+      else if(type==="burst"){
+        // Full 360 at once
+        for(let i=0;i<count;i++)
+          addProj(CX,CY, Math.PI*2*i/count, c, spd, size);
+      }
+      else if(type==="rain"){
+        // Vertical columns raining down, alternating safe gaps
+        const cols = 7;
+        for(let col=0;col<cols;col++){
+          if(col===rainCol%cols) continue; // safe column
+          const x = CX - PAN_R*0.85 + col*(PAN_R*1.7/(cols-1));
+          const startY = CY - PAN_R - 10;
+          for(let step=0;step<5;step++)
+            addProj(x, startY - step*60, Math.PI/2, c, spd+step*0.1, size);
+        }
+        rainCol++;
+      }
+    }
+
+    // ── ACTIVATE ABILITY ─────────────────────────────────────
+    function activateAbility(){
+      if(abilCD>0) return;
+      abilCD=ABIL_MAX;
+      if(ability==="shield"){player.shieldOn=true;player.shieldT=90;}
+      else if(ability==="heal"){player.healOn=true;player.healT=70;}
+      else if(ability==="catch"){player.catchOn=true;player.catchT=55;}
+    }
+
+    // ── UPDATE ────────────────────────────────────────────────
+    function update(){
+      frame++;
+      if(gameOver) return;
+      const DT = 16; // ~ms per frame at 60fps
+
+      // cooldowns
+      if(abilCD>0) abilCD--;
+      if(player.shieldT>0){player.shieldT--;if(!player.shieldT)player.shieldOn=false;}
+      if(player.healT>0){player.healT--;if(!player.healT)player.healOn=false;}
+      if(player.catchT>0){player.catchT--;if(!player.catchT)player.catchOn=false;}
+      if(player.invT>0) player.invT--;
+
+      // ── player movement (or crawl if downed)
+      const keys=keysRef.current, touch=touchRef.current;
+      if(player.alive || player.downed){
+        let mx=0,my=0;
+        if(keys["ArrowLeft"]||keys["a"]) mx-=1;
+        if(keys["ArrowRight"]||keys["d"]) mx+=1;
+        if(keys["ArrowUp"]||keys["w"]) my-=1;
+        if(keys["ArrowDown"]||keys["s"]) my+=1;
+        mx+=touch.joyX; my+=touch.joyY;
+        const ml=Math.sqrt(mx*mx+my*my);
+        const spd = player.downed ? 0.55 : player.speed; // crawl speed
+        if(ml>0.05){
+          player.x+=mx/ml*spd; player.y+=my/ml*spd;
+          player.angle=Math.atan2(my,mx);
+        }
+        clampPan(player);
+        if(player.alive){
+          if((keys[" "]&&!keys._ab)||touch.abil){activateAbility();keys._ab=true;touch.abil=false;}
+          if(!keys[" "]) keys._ab=false;
+        }
+      }
+
+      // ── downed timer: auto-revive after 7 seconds (420 frames)
+      if(player.downed){
+        player.downTimer--;
+        // Check if a living bot is RIGHT NEXT to player (must be very close — touching range)
+        const REVIVE_RANGE = 30 * 30; // must be very close, practically touching
+        const nearBot = bots.find(b=>b.alive && d2(b,player)<REVIVE_RANGE);
+        if(nearBot){
+          player.reviveT++;
+          if(player.reviveT>=50){ // ~0.8s of contact = revived
+            player.downed=false; player.alive=true;
+            player.hp=1; player.invT=90; player.reviveT=0;
+            burst(player.x,player.y,"#66BB6A",20);
+            killFeed.unshift({msg:"💚 Teammate revived you!",t:180});
+            if(killFeed.length>5)killFeed.pop();
+          }
+        } else {
+          player.reviveT=0;
+        }
+        // Auto-revive after 7s
+        if(player.downTimer<=0){
+          player.downed=false; player.alive=true;
+          player.hp=1; player.invT=90; player.reviveT=0;
+          burst(player.x,player.y,"#FFD700",20);
+          killFeed.unshift({msg:"⏱️ Back on your feet!",t:180});
+          if(killFeed.length>5)killFeed.pop();
+        }
+      }
+      // smooth camera
+      cam.x+=(player.x-cam.x)*LERP;
+      cam.y+=(player.y-cam.y)*LERP;
+
+      // ── bot movement: wander + dodge
+      const aliveBots=bots.filter(b=>b.alive);
+      for(const bot of aliveBots){
+        if(bot.invT>0){bot.invT--;continue;}
+        // find nearest proj
+        let nearDist=99999, nearProj=null;
+        for(const pr of projs){
+          const dd=d2(bot,pr);
+          if(dd<nearDist){nearDist=dd;nearProj=pr;}
+        }
+        if(nearProj&&nearDist<100*100){
+          if(bot.dodgeT<=0){
+            bot.dodgeA=Math.atan2(bot.y-nearProj.y,bot.x-nearProj.x)+(Math.random()-.5)*1.1;
+            bot.dodgeT=22+Math.floor(Math.random()*18);
+          }
+          bot.dodgeT--;
+          bot.x+=Math.cos(bot.dodgeA)*bot.speed*1.1;
+          bot.y+=Math.sin(bot.dodgeA)*bot.speed*1.1;
+        } else {
+          bot.dodgeT=0;
+          bot.wanderT--;
+          if(bot.wanderT<=0){bot.wanderA=Math.random()*Math.PI*2;bot.wanderT=55+Math.floor(Math.random()*70);}
+          bot.x+=Math.cos(bot.wanderA)*bot.speed*0.38;
+          bot.y+=Math.sin(bot.wanderA)*bot.speed*0.38;
+        }
+        clampPan(bot);
+      }
+
+      // ── boss wave timers (only when not between bosses)
+      if(!betweenBosses){
+        phaseMs+=DT;
+        const bd=BOSSES[bossIdx], ph=bd.phases[phaseIdx];
+        for(const wt of waveTimers){
+          wt.cd-=DT;
+          if(wt.cd<=0){
+            if(!betweenBosses) fireWave(wt.i);
+            wt.cd=ph[wt.i].delay; // reset timer for this wave
+          }
+        }
+        // Check phase end
+        if(phaseMs>=bd.phaseDur[phaseIdx]){
+          if(phaseIdx<3){
+            phaseIdx++;
+            initPhase();
+            burst(CX,CY,bd.color,30);
+            killFeed.unshift({msg:`⚡ Phase ${phaseIdx+1}!`, t:160});
+            if(killFeed.length>5)killFeed.pop();
+          } else {
+            // boss defeated
+            betweenBosses=true;
+            betweenTimer=3500;
+            bossDefeated[bossIdx]=true;
+            burst(CX,CY,bd.color,80);
+            projs.length=0;
+            killFeed.unshift({msg:`${bd.name} defeated! 🎉`, t:260});
+            if(killFeed.length>5)killFeed.pop();
+          }
+        }
+      } else {
+        betweenTimer-=DT;
+        if(betweenTimer<=0){
+          if(bossIdx<3){
+            bossIdx++;
+            phaseIdx=0;
+            betweenBosses=false;
+            initPhase();
+          } else {
+            // all bosses done
+            gameOver=true; won=true;
+            setTimeout(()=>onGameEnd(1),2200);
+          }
+        }
+      }
+
+      // ── projectiles
+      for(let i=projs.length-1;i>=0;i--){
+        const pr=projs[i];
+        pr.x+=pr.dx; pr.y+=pr.dy; pr.life--;
+        if(pr.life<=0||(pr.x-CX)**2+(pr.y-CY)**2>(PAN_R+100)**2){projs.splice(i,1);continue;}
+        let rm=false;
+        // hit player
+        if((player.alive||player.downed)&&player.invT===0&&d2(pr,player)<(player.r+pr.r)**2){
+          if(player.downed){
+            // already crawling — a hit while downed = fully eliminated
+            player.downed=false; player.alive=false; survivors--;
+            burst(player.x,player.y,"#FF4444",35);
+            projs.splice(i,1); rm=true;
+          } else if(player.catchOn){
+            addProj(player.x,player.y,Math.atan2(CY-player.y,CX-player.x),"#FFA726",10,pr.r);
+            burst(player.x,player.y,"#FFA726",8);
+            projs.splice(i,1); rm=true;
+          } else if(player.shieldOn){
+            burst(player.x,player.y,"#4FC3F7",8);
+            projs.splice(i,1); rm=true;
+          } else if(player.healOn){
+            player.hp=Math.min(player.maxHp,player.hp+1);
+            burst(player.x,player.y,"#66BB6A",8);
+            projs.splice(i,1); rm=true;
+          } else {
+            player.hp--;
+            player.invT=45;
+            burst(player.x,player.y,"#FF4444",14);
+            if(player.hp<=0){
+              if(isTeamMode){
+                // Go downed — crawl, wait for revive or 7s timer
+                player.alive=false; player.downed=true;
+                player.downTimer=420; player.reviveT=0;
+                burst(player.x,player.y,"#FF8800",20);
+                killFeed.unshift({msg:"💀 You're down! Crawl to a teammate!",t:220});
+                if(killFeed.length>5)killFeed.pop();
+              } else {
+                player.alive=false; survivors--;
+                burst(player.x,player.y,player.color,35);
+              }
+            }
+            projs.splice(i,1); rm=true;
+          }
+        }
+        if(rm)continue;
+        // hit bot
+        for(const bot of aliveBots){
+          if(bot.invT>0)continue;
+          if(d2(pr,bot)<(bot.r+pr.r)**2){
+            bot.hp--;
+            burst(bot.x,bot.y,bot.color,8);
+            bot.invT=35;
+            if(bot.hp<=0){
+              bot.alive=false; survivors--;
+              burst(bot.x,bot.y,bot.color,20);
+              if(survivors%10===0&&survivors>0)
+                killFeed.unshift({msg:`${survivors} kernels left`, t:150});
+              if(killFeed.length>5)killFeed.pop();
+            }
+            projs.splice(i,1); rm=true; break;
+          }
+        }
+      }
+
+      // ── particles
+      for(let i=parts.length-1;i>=0;i--){
+        const pt=parts[i];
+        pt.x+=pt.dx; pt.y+=pt.dy; pt.dy+=0.04; pt.life--;
+        if(pt.life<=0)parts.splice(i,1);
+      }
+      killFeed=killFeed.filter(k=>{k.t--;return k.t>0;});
+
+      // ── win/lose checks
+      // win/lose checks
+      const trulyDead = !player.alive && !player.downed;
+      if(trulyDead&&!gameOver){gameOver=true;setTimeout(()=>onGameEnd(survivors),1800);}
+      if((player.alive||player.downed)&&survivors===1&&!gameOver){gameOver=true;won=true;setTimeout(()=>onGameEnd(1),2000);}
+    }
+
+    // ── DRAW ─────────────────────────────────────────────────
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      const cx=cam.x, cy=cam.y;
+
+      ctx.save();
+      ctx.translate(W/2,H/2);
+      ctx.scale(ZOOM,ZOOM);
+      ctx.translate(-cx,-cy);
+
+      // kitchen counter outside pan
+      ctx.fillStyle="#181008";
+      ctx.fillRect(cx-W/ZOOM,cy-H/ZOOM,W/ZOOM*2,H/ZOOM*2);
+
+      // ── frying pan handle
+      const hAng=Math.PI*0.08;
+      const hSX=CX+Math.cos(hAng)*PAN_R, hSY=CY+Math.sin(hAng)*PAN_R;
+      const hEX=CX+Math.cos(hAng)*(PAN_R+380), hEY=CY+Math.sin(hAng)*(PAN_R+380);
+      const perp=hAng+Math.PI/2, hw=34;
+      const hg=ctx.createLinearGradient(hSX,hSY,hEX,hEY);
+      hg.addColorStop(0,"#6a6a6a"); hg.addColorStop(0.3,"#aaa"); hg.addColorStop(1,"#444");
+      ctx.beginPath();
+      ctx.moveTo(hSX+Math.cos(perp)*hw, hSY+Math.sin(perp)*hw);
+      ctx.lineTo(hSX-Math.cos(perp)*hw, hSY-Math.sin(perp)*hw);
+      ctx.lineTo(hEX-Math.cos(perp)*hw*.5, hEY-Math.sin(perp)*hw*.5);
+      ctx.lineTo(hEX+Math.cos(perp)*hw*.5, hEY+Math.sin(perp)*hw*.5);
+      ctx.closePath();
+      ctx.fillStyle=hg; ctx.fill();
+      // grip wraps
+      ctx.strokeStyle="rgba(0,0,0,0.4)"; ctx.lineWidth=2.5;
+      for(let i=0;i<9;i++){
+        const t=.3+i*.07;
+        const rx=hSX+(hEX-hSX)*t, ry=hSY+(hEY-hSY)*t;
+        ctx.beginPath();
+        ctx.moveTo(rx+Math.cos(perp)*hw*.85, ry+Math.sin(perp)*hw*.85);
+        ctx.lineTo(rx-Math.cos(perp)*hw*.85, ry-Math.sin(perp)*hw*.85);
+        ctx.stroke();
+      }
+
+      // ── pan outer rim
+      const rimG=ctx.createRadialGradient(CX,CY,PAN_R-8,CX,CY,PAN_R+30);
+      rimG.addColorStop(0,"#888"); rimG.addColorStop(.5,"#bbb"); rimG.addColorStop(1,"#444");
+      ctx.beginPath(); ctx.arc(CX,CY,PAN_R+28,0,Math.PI*2);
+      ctx.fillStyle=rimG; ctx.fill();
+      ctx.beginPath(); ctx.arc(CX,CY,PAN_R+22,Math.PI*1.15,Math.PI*1.85);
+      ctx.strokeStyle="rgba(255,255,255,0.22)"; ctx.lineWidth=7; ctx.stroke();
+
+      // ── pan cooking surface
+      const panG=ctx.createRadialGradient(CX-PAN_R*.2,CY-PAN_R*.2,0,CX,CY,PAN_R);
+      panG.addColorStop(0,"#2d2208"); panG.addColorStop(.5,"#1e1705"); panG.addColorStop(1,"#0e0e02");
+      ctx.beginPath(); ctx.arc(CX,CY,PAN_R,0,Math.PI*2);
+      ctx.fillStyle=panG; ctx.fill();
+
+      // seasoning texture spots
+      for(let i=0;i<22;i++){
+        const a=(i/22)*Math.PI*2*3.7, r=PAN_R*(.12+.8*(i%7)/7);
+        ctx.beginPath(); ctx.ellipse(CX+Math.cos(a)*r,CY+Math.sin(a)*r,10+i%7,7+i%4,a,0,Math.PI*2);
+        ctx.fillStyle=`rgba(80,55,5,${.05+.03*(i%3)})`; ctx.fill();
+      }
+
+      // ── butter blobs (decorative, always visible)
+      const bBlobs=[
+        {x:CX-200,y:CY-170,rx:30,ry:17,rot:.5,a:.58},{x:CX+260,y:CY-90,rx:25,ry:14,rot:-.3,a:.5},
+        {x:CX-130,y:CY+240,rx:36,ry:21,rot:.8,a:.55},{x:CX+170,y:CY+210,rx:22,ry:15,rot:-.6,a:.48},
+        {x:CX-310,y:CY+55,rx:19,ry:11,rot:.2,a:.44},{x:CX+330,y:CY-170,rx:27,ry:17,rot:.9,a:.5},
+        {x:CX+50,y:CY-380,rx:21,ry:13,rot:-.2,a:.42},{x:CX-50,y:CY+390,rx:28,ry:16,rot:.4,a:.52},
+      ];
+      for(const b of bBlobs){
+        ctx.save(); ctx.translate(b.x,b.y); ctx.rotate(b.rot);
+        ctx.beginPath(); ctx.ellipse(0,0,b.rx,b.ry,0,0,Math.PI*2);
+        const bg=ctx.createRadialGradient(0,-b.ry*.3,0,0,0,b.rx);
+        bg.addColorStop(0,`rgba(255,240,100,${b.a})`);
+        bg.addColorStop(.6,`rgba(230,170,10,${b.a*.7})`);
+        bg.addColorStop(1,`rgba(160,110,0,${b.a*.3})`);
+        ctx.fillStyle=bg; ctx.fill();
+        ctx.beginPath(); ctx.ellipse(-b.rx*.25,-b.ry*.4,b.rx*.27,b.ry*.2,0,0,Math.PI*2);
+        ctx.fillStyle=`rgba(255,255,200,${b.a*.5})`; ctx.fill();
+        ctx.restore();
+      }
+
+      // ── salt grains (decorative)
+      const sGrains=[
+        {x:CX+115,y:CY+85,r:3},{x:CX-175,y:CY+145,r:2.5},{x:CX+255,y:CY-215,r:3.5},
+        {x:CX-295,y:CY-155,r:2},{x:CX+375,y:CY+95,r:3},{x:CX-395,y:CY+15,r:2.5},
+        {x:CX+45,y:CY-415,r:3},{x:CX-95,y:CY+415,r:2.5},{x:CX+290,y:CY+315,r:3},
+        {x:CX-235,y:CY-355,r:2},{x:CX+435,y:CY-75,r:2.5},{x:CX-455,y:CY+175,r:3},
+        {x:CX+80,y:CY+195,r:2},{x:CX-215,y:CY-75,r:3},{x:CX+195,y:CY-155,r:2.5},
+        {x:CX-55,y:CY-255,r:2.5},{x:CX+395,y:CY-335,r:2},{x:CX-345,y:CY+295,r:2.5},
+      ];
+      for(const sg of sGrains){
+        ctx.beginPath(); ctx.arc(sg.x,sg.y,sg.r,0,Math.PI*2);
+        ctx.fillStyle="rgba(235,235,255,.55)"; ctx.fill();
+        ctx.beginPath(); ctx.arc(sg.x-sg.r*.3,sg.y-sg.r*.3,sg.r*.35,0,Math.PI*2);
+        ctx.fillStyle="rgba(255,255,255,.75)"; ctx.fill();
+      }
+
+      // ── heat shimmer rings (animated)
+      for(let i=0;i<4;i++){
+        ctx.beginPath(); ctx.arc(CX,CY,PAN_R*(.22+i*.22)+Math.sin(frame*.05+i*1.2)*5,0,Math.PI*2);
+        ctx.strokeStyle=`rgba(255,140,0,${.04+i*.01})`; ctx.lineWidth=1.5; ctx.stroke();
+      }
+      // inner shadow
+      const inS=ctx.createRadialGradient(CX,CY,PAN_R*.68,CX,CY,PAN_R);
+      inS.addColorStop(0,"transparent"); inS.addColorStop(1,"rgba(0,0,0,.5)");
+      ctx.beginPath(); ctx.arc(CX,CY,PAN_R,0,Math.PI*2);
+      ctx.fillStyle=inS; ctx.fill();
+
+      // ── particles
+      for(const pt of parts){
+        ctx.beginPath(); ctx.arc(pt.x,pt.y,pt.r,0,Math.PI*2);
+        ctx.fillStyle=pt.color; ctx.globalAlpha=Math.max(0,pt.life/45); ctx.fill(); ctx.globalAlpha=1;
+      }
+
+      // ── projectiles
+      for(const pr of projs){
+        // trail
+        ctx.beginPath(); ctx.moveTo(pr.x,pr.y); ctx.lineTo(pr.x-pr.dx*3.5,pr.y-pr.dy*3.5);
+        ctx.strokeStyle=pr.color+"88"; ctx.lineWidth=pr.r*1.2; ctx.stroke();
+        // glow ball
+        const g=ctx.createRadialGradient(pr.x,pr.y,0,pr.x,pr.y,pr.r);
+        g.addColorStop(0,"rgba(255,255,255,.95)"); g.addColorStop(1,pr.color);
+        ctx.beginPath(); ctx.arc(pr.x,pr.y,pr.r,0,Math.PI*2);
+        ctx.fillStyle=g; ctx.shadowColor=pr.color; ctx.shadowBlur=8; ctx.fill(); ctx.shadowBlur=0;
+      }
+
+      // ── bots
+      // Find nearest bot to downed player for highlighting
+      const nearestReviveBot = player.downed
+        ? bots.filter(b=>b.alive).sort((a,b)=>d2(a,player)-d2(b,player))[0]
+        : null;
+
+      for(const bot of bots){
+        if(!bot.alive)continue;
+        // flicker when invincible
+        if(bot.invT>0&&Math.floor(frame/4)%2===0) continue;
+        ctx.beginPath(); ctx.ellipse(bot.x,bot.y+bot.r*.65,bot.r*.75,bot.r*.28,0,0,Math.PI*2);
+        ctx.fillStyle="rgba(0,0,0,.35)"; ctx.fill();
+        ctx.font=`${bot.r*2.1}px serif`; ctx.textAlign="center"; ctx.textBaseline="middle";
+        ctx.shadowColor=bot.accent; ctx.shadowBlur=4;
+        ctx.fillText(bot.emoji,bot.x,bot.y); ctx.shadowBlur=0;
+        const bw=bot.r*2.5;
+        ctx.fillStyle="#111"; ctx.fillRect(bot.x-bw/2,bot.y-bot.r-7,bw,3);
+        ctx.fillStyle=bot.hp>1?"#66BB6A":"#FF4444";
+        ctx.fillRect(bot.x-bw/2,bot.y-bot.r-7,bw*(bot.hp/bot.maxHp),3);
+
+        // ── Blue revive triangle above every living bot when player is downed
+        if(player.downed){
+          const isNearest = nearestReviveBot && nearestReviveBot.id === bot.id;
+          const triY = bot.y - bot.r - 22;
+          const triSize = isNearest ? 9 + Math.sin(frame*0.18)*2 : 7; // nearest pulses
+          const triColor = isNearest ? "#00BFFF" : "#4488FF";
+          const triAlpha = isNearest ? 0.95 : 0.55;
+
+          // Filled triangle pointing down (like "come here" marker)
+          ctx.beginPath();
+          ctx.moveTo(bot.x, triY + triSize);           // bottom point
+          ctx.lineTo(bot.x - triSize, triY - triSize*0.6); // top-left
+          ctx.lineTo(bot.x + triSize, triY - triSize*0.6); // top-right
+          ctx.closePath();
+          ctx.fillStyle = `rgba(${isNearest?'0,180,255':'60,120,255'},${triAlpha})`;
+          ctx.fill();
+          ctx.strokeStyle = triColor;
+          ctx.lineWidth = isNearest ? 2 : 1.2;
+          ctx.stroke();
+
+          // Glow on nearest
+          if(isNearest){
+            ctx.beginPath();
+            ctx.moveTo(bot.x, triY + triSize);
+            ctx.lineTo(bot.x - triSize, triY - triSize*0.6);
+            ctx.lineTo(bot.x + triSize, triY - triSize*0.6);
+            ctx.closePath();
+            ctx.fillStyle = `rgba(0,180,255,0.18)`;
+            ctx.fill();
+            // "REVIVE" label
+            ctx.font="bold 6px monospace"; ctx.fillStyle="#00BFFF"; ctx.textAlign="center";
+            ctx.fillText("REVIVE",bot.x, triY - triSize - 2);
+          }
+        }
+      }
+
+      // ── boss at center
+      if(!betweenBosses||(betweenBosses&&betweenTimer>2500)){
+        const bd=BOSSES[bossIdx];
+        const pulse=.78+.22*Math.sin(frame*.08);
+        // danger aura
+        ctx.beginPath(); ctx.arc(CX,CY,55*pulse,0,Math.PI*2);
+        ctx.strokeStyle=bd.color+"55"; ctx.lineWidth=6; ctx.stroke();
+        ctx.beginPath(); ctx.arc(CX,CY,42,0,Math.PI*2);
+        ctx.strokeStyle=bd.color+"99"; ctx.lineWidth=4; ctx.stroke();
+        // boss icon (large)
+        ctx.font="64px serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+        ctx.shadowColor=bd.color; ctx.shadowBlur=35;
+        ctx.fillText(bd.icon,CX,CY); ctx.shadowBlur=0;
+        // phase bar
+        const dur=bd.phaseDur[phaseIdx];
+        const pct=betweenBosses?1:Math.min(1,phaseMs/dur);
+        const bw2=90;
+        ctx.fillStyle="rgba(0,0,0,.7)"; ctx.fillRect(CX-bw2/2,CY-52,bw2,6);
+        ctx.fillStyle=bd.color; ctx.fillRect(CX-bw2/2,CY-52,bw2*pct,6);
+        ctx.font="8px monospace"; ctx.fillStyle=bd.color; ctx.textAlign="center";
+        ctx.fillText(`Phase ${phaseIdx+1}/4`,CX,CY-57);
+      } else {
+        // transition flash
+        ctx.font="bold 18px monospace"; ctx.textAlign="center"; ctx.textBaseline="middle";
+        if(bossIdx<3){
+          const next=BOSSES[bossIdx<3?bossIdx+1:3];
+          ctx.fillStyle=next.color; ctx.shadowColor=next.color; ctx.shadowBlur=20;
+          ctx.fillText(`Next: ${next.icon} ${next.name}`,CX,CY); ctx.shadowBlur=0;
+        } else {
+          ctx.fillStyle="#FFD700"; ctx.shadowColor="#FFD700"; ctx.shadowBlur=20;
+          ctx.fillText("🏆 SURVIVED!",CX,CY); ctx.shadowBlur=0;
+        }
+      }
+
+      // ── player (alive or downed/crawling)
+      if(player.alive || player.downed){
+        if(player.invT>0&&Math.floor(frame/4)%2===0){/* flicker */} else {
+          ctx.save();
+          if(player.downed){
+            // Tilt sideways to show crawling — rotate around player center
+            ctx.translate(player.x, player.y);
+            ctx.rotate(Math.PI/2 + Math.sin(frame*0.2)*0.18); // slight wobble
+            ctx.translate(-player.x, -player.y);
+            ctx.globalAlpha = 0.75;
+          }
+          ctx.beginPath(); ctx.ellipse(player.x,player.y+player.r*.65,player.r*.82,player.r*.3,0,0,Math.PI*2);
+          ctx.fillStyle="rgba(0,0,0,.42)"; ctx.fill();
+          if(player.shieldOn&&player.alive){
+            ctx.beginPath(); ctx.arc(player.x,player.y,player.r+11,0,Math.PI*2);
+            ctx.strokeStyle="#4FC3F7cc"; ctx.lineWidth=3; ctx.stroke();
+            ctx.beginPath(); ctx.arc(player.x,player.y,player.r+15,0,Math.PI*2);
+            ctx.strokeStyle="#4FC3F733"; ctx.lineWidth=8; ctx.stroke();
+          }
+          ctx.font=`${player.r*2.6}px serif`; ctx.textAlign="center"; ctx.textBaseline="middle";
+          ctx.shadowColor=player.downed?"#FF8800":player.accent; ctx.shadowBlur=player.downed?8:14;
+          ctx.fillText(player.emoji,player.x,player.y); ctx.shadowBlur=0;
+          if(!player.downed){
+            ctx.beginPath();
+            ctx.moveTo(player.x+Math.cos(player.angle)*(player.r+1),player.y+Math.sin(player.angle)*(player.r+1));
+            ctx.lineTo(player.x+Math.cos(player.angle)*(player.r+12),player.y+Math.sin(player.angle)*(player.r+12));
+            ctx.strokeStyle=player.accent; ctx.lineWidth=2.5; ctx.stroke();
+          }
+          ctx.globalAlpha=1;
+          ctx.restore();
+
+          // YOU label (always visible)
+          ctx.font="bold 7px monospace"; ctx.fillStyle=player.downed?"#FF8800":"#FFD700"; ctx.textAlign="center";
+          ctx.fillText(player.downed?"DOWN":"YOU",player.x,player.y-player.r-12);
+
+          // Downed: show revive timer bar + countdown
+          if(player.downed){
+            const bw=38, pct=player.downTimer/420;
+            // Orange timer bar above player
+            ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(player.x-bw/2,player.y-player.r-24,bw,5);
+            ctx.fillStyle=pct>0.4?"#FF8800":"#FF4444";
+            ctx.fillRect(player.x-bw/2,player.y-player.r-24,bw*pct,5);
+            // Countdown seconds
+            ctx.font="bold 7px monospace"; ctx.fillStyle="#FF8800"; ctx.textAlign="center";
+            ctx.fillText(`${Math.ceil(player.downTimer/60)}s`,player.x,player.y-player.r-28);
+            // Green contact glow when a bot is right next to you (in revive range)
+            if(player.reviveT>0){
+              const revPct=player.reviveT/50;
+              // Pulsing green ring
+              ctx.beginPath(); ctx.arc(player.x,player.y,player.r+14+Math.sin(frame*0.3)*3,0,Math.PI*2);
+              ctx.strokeStyle=`rgba(100,255,100,${0.5+revPct*0.4})`; ctx.lineWidth=3; ctx.stroke();
+              // Fill arc showing progress
+              ctx.beginPath(); ctx.arc(player.x,player.y,player.r+14,-Math.PI/2,-Math.PI/2+Math.PI*2*revPct);
+              ctx.strokeStyle="#44FF88"; ctx.lineWidth=4; ctx.stroke();
+              ctx.font="bold 6px monospace"; ctx.fillStyle="#44FF88"; ctx.textAlign="center";
+              ctx.fillText("REVIVING...",player.x,player.y+player.r+22);
+            }
+          }
+        }
+      }
+
+      ctx.restore();
+
+      // ── HUD ─────────────────────────────────────────────────
+      // top bar
+      ctx.fillStyle="rgba(0,0,0,.72)"; ctx.fillRect(0,0,W,42);
+
+      // survivor count
+      ctx.font="bold 14px monospace"; ctx.fillStyle="#FFD700"; ctx.textAlign="left";
+      ctx.fillText(`🍿 ${survivors} alive`,10,26);
+
+      // boss name top center
+      {
+        const bd=BOSSES[bossIdx];
+        if(!betweenBosses){
+          const dur=bd.phaseDur[phaseIdx], pct=Math.min(1,phaseMs/dur), bw=170;
+          ctx.fillStyle="rgba(0,0,0,.5)"; ctx.fillRect(W/2-bw/2,5,bw,12);
+          ctx.fillStyle=bd.color; ctx.fillRect(W/2-bw/2,5,bw*pct,12);
+          ctx.font="10px monospace"; ctx.fillStyle=bd.color; ctx.textAlign="center";
+          ctx.fillText(`${bd.icon} ${bd.name} — Phase ${phaseIdx+1}/4`,W/2,3);
+        } else {
+          ctx.font="12px monospace"; ctx.fillStyle="#FFD700"; ctx.textAlign="center";
+          ctx.fillText(bossIdx<3?`${BOSSES[bossIdx].name} defeated!`:"🎉 Last boss down!",W/2,26);
+        }
+      }
+      ctx.fillStyle="#FFD700"; ctx.textAlign="right";
+      ctx.fillText(`Boss ${bossIdx+1}/4`,W-10,26);
+
+      // HP hearts
+      ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(8,H-52,80,42);
+      ctx.font="22px serif"; ctx.textAlign="left";
+      ctx.fillText(player.hp>0?"❤️":"🖤",12,H-18);
+      ctx.fillText(player.hp>1?"❤️":"🖤",46,H-18);
+
+      // ability bar
+      const ab=ABILITIES.find(a=>a.id===ability);
+      const cdP=abilCD/ABIL_MAX;
+      ctx.fillStyle="rgba(0,0,0,.65)"; ctx.fillRect(W/2-74,H-52,148,44);
+      ctx.fillStyle=abilCD>0?"#222":ab.color; ctx.fillRect(W/2-72,H-50,144*(1-cdP),40);
+      ctx.font="13px monospace"; ctx.fillStyle="#fff"; ctx.textAlign="center";
+      ctx.fillText(`${ab.icon} ${ab.name}`,W/2,H-26);
+      if(abilCD>0){ctx.font="10px monospace";ctx.fillStyle="#aaa";ctx.fillText(`${Math.ceil(abilCD/60)}s`,W/2,H-12);}
+
+      // boss progress bottom-left
+      for(let i=0;i<4;i++){
+        ctx.font="10px monospace"; ctx.textAlign="left";
+        ctx.fillStyle=bossDefeated[i]?"#66BB6A":(i===bossIdx&&!betweenBosses?"#FFD700":"#444");
+        ctx.fillText(`${bossDefeated[i]?"✅":"⬜"} ${BOSSES[i].icon} ${BOSSES[i].name}`,10,H-66-i*17);
+      }
+
+      // kill feed
+      killFeed.forEach((k,idx)=>{
+        const a=Math.min(1,k.t/40);
+        ctx.fillStyle=`rgba(0,0,0,${.5*a})`;
+        ctx.fillRect(W-238,44+idx*22,228,18);
+        ctx.font="10px monospace"; ctx.fillStyle=`rgba(255,215,0,${a})`; ctx.textAlign="right";
+        ctx.fillText(k.msg,W-10,57+idx*22);
+      });
+
+      // controls hint
+      if(frame<180){
+        ctx.fillStyle="rgba(255,255,255,.26)"; ctx.font="11px monospace"; ctx.textAlign="center";
+        ctx.fillText("WASD = Move    SPACE = Ability    Dodge the boss!",W/2,H-60);
+      }
+
+      // ── minimap (circular, top-right)
+      const MM=86, mmX=W-MM-10, mmY=46;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(mmX+MM/2,mmY+MM/2,MM/2,0,Math.PI*2);
+      ctx.fillStyle="rgba(0,0,0,.72)"; ctx.fill(); ctx.clip();
+      const mmS=MM/(PAN_R*2.1), mmCX=mmX+MM/2, mmCY=mmY+MM/2;
+      ctx.beginPath(); ctx.arc(mmCX,mmCY,PAN_R*mmS,0,Math.PI*2);
+      ctx.fillStyle="rgba(40,28,5,.9)"; ctx.fill();
+      // boss dot
+      ctx.beginPath(); ctx.arc(mmCX,mmCY,4,0,Math.PI*2);
+      ctx.fillStyle=BOSSES[bossIdx].color; ctx.fill();
+      // bot dots
+      bots.filter(b=>b.alive).forEach(b=>{
+        ctx.beginPath(); ctx.arc(mmCX+(b.x-CX)*mmS,mmCY+(b.y-CY)*mmS,1.8,0,Math.PI*2);
+        ctx.fillStyle="#FF8888"; ctx.fill();
+      });
+      // player dot (gold=alive, orange=downed)
+      if(player.alive||player.downed){
+        ctx.beginPath(); ctx.arc(mmCX+(player.x-CX)*mmS,mmCY+(player.y-CY)*mmS,3,0,Math.PI*2);
+        ctx.fillStyle=player.downed?"#FF8800":"#FFD700"; ctx.fill();
+      }
+      ctx.restore();
+      ctx.strokeStyle="rgba(255,165,0,.5)"; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.arc(mmX+MM/2,mmY+MM/2,MM/2,0,Math.PI*2); ctx.stroke();
+
+      // ── win / lose overlays
+      if(won){
+        ctx.fillStyle="rgba(0,0,0,.75)"; ctx.fillRect(0,0,W,H);
+        ctx.font="bold 52px serif"; ctx.fillStyle="#FFD700"; ctx.textAlign="center";
+        ctx.shadowColor="#FFD700"; ctx.shadowBlur=40;
+        ctx.fillText("🏆 WINNER!",W/2,H/2-18); ctx.shadowBlur=0;
+        ctx.font="18px monospace"; ctx.fillStyle="#fff";
+        ctx.fillText("Last kernel standing! Opening chest...",W/2,H/2+28);
+      } else if(gameOver&&!won){
+        ctx.fillStyle="rgba(0,0,0,.75)"; ctx.fillRect(0,0,W,H);
+        ctx.font="bold 48px serif"; ctx.fillStyle="#FF4444"; ctx.textAlign="center";
+        ctx.fillText("💀 POPPED!",W/2,H/2-18);
+        ctx.font="16px monospace"; ctx.fillStyle="#aaa";
+        ctx.fillText("You couldn't take the heat...",W/2,H/2+18);
+        ctx.font="13px monospace"; ctx.fillStyle="#FFD700";
+        ctx.fillText("🎁 Opening your chest anyway!",W/2,H/2+44);
+      }
+      // Down but not dead — show big pulsing warning
+      if(player.downed&&!gameOver){
+        const pulse=0.6+0.4*Math.sin(frame*0.18);
+        ctx.fillStyle=`rgba(255,100,0,${0.12*pulse})`;
+        ctx.fillRect(0,0,W,H);
+        ctx.font=`bold ${14+pulse*3}px monospace`; ctx.fillStyle=`rgba(255,140,0,${0.7+pulse*0.3})`; ctx.textAlign="center";
+        ctx.fillText("⚠️ YOU'RE DOWN — CRAWL TO A TEAMMATE!",W/2,H-80);
+        const secsLeft=Math.ceil(player.downTimer/60);
+        ctx.font="12px monospace"; ctx.fillStyle=`rgba(255,80,80,${0.7+pulse*0.3})`;
+        ctx.fillText(`Auto-revive in ${secsLeft}s`,W/2,H-62);
+      }
+    }
+
+    function loop(){update();draw();animRef.current=requestAnimationFrame(loop);}
+    animRef.current=requestAnimationFrame(loop);
+    const kd=e=>{keysRef.current[e.key]=true;};
+    const ku=e=>{keysRef.current[e.key]=false;};
+    window.addEventListener("keydown",kd);
+    window.addEventListener("keyup",ku);
+    return()=>{cancelAnimationFrame(animRef.current);window.removeEventListener("keydown",kd);window.removeEventListener("keyup",ku);};
+  },[]);
+
+  // touch joystick
+  function onJoyStart(e){e.preventDefault();joyRef.current={active:true,sx:e.touches[0].clientX,sy:e.touches[0].clientY};}
+  function onJoyMove(e){e.preventDefault();if(!joyRef.current.active)return;const t=e.touches[0];touchRef.current.joyX=Math.max(-1,Math.min(1,(t.clientX-joyRef.current.sx)/40));touchRef.current.joyY=Math.max(-1,Math.min(1,(t.clientY-joyRef.current.sy)/40));}
+  function onJoyEnd(e){e.preventDefault();joyRef.current.active=false;touchRef.current.joyX=0;touchRef.current.joyY=0;}
+
+  return(
+    <div style={{position:"relative",width:"100%",maxWidth:760,margin:"0 auto"}}>
+      <canvas ref={canvasRef} width={760} height={560} style={{width:"100%",height:"auto",display:"block",borderRadius:16,border:"2px solid rgba(255,165,0,.35)"}}/>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 10px 4px",gap:8}}>
+        <div onTouchStart={onJoyStart} onTouchMove={onJoyMove} onTouchEnd={onJoyEnd}
+          style={{width:108,height:108,borderRadius:"50%",background:"rgba(255,255,255,.07)",border:"2px solid rgba(255,165,0,.3)",display:"flex",alignItems:"center",justifyContent:"center",touchAction:"none",userSelect:"none",flexShrink:0}}>
+          <span style={{fontSize:24,opacity:.35}}>🕹️</span>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"center"}}>
+          <button onTouchStart={e=>{e.preventDefault();touchRef.current.abil=true;}} onTouchEnd={()=>{}}
+            style={{width:72,height:72,borderRadius:"50%",background:"rgba(255,165,0,.2)",border:"2px solid #FFA500",color:"#FFA500",fontSize:24,cursor:"pointer",touchAction:"none"}}>✨</button>
+        </div>
+        <div style={{width:108,height:108,borderRadius:12,background:"rgba(255,255,255,.03)",border:"1px solid rgba(100,100,200,.18)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <span style={{fontSize:10,color:"rgba(255,255,255,.22)",textAlign:"center",fontFamily:"monospace",lineHeight:1.7}}>WASD/Arrows<br/>to Move<br/>Space=Ability<br/>DODGE!</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── CHEST SCREEN ─────────────────────────────────────────────
+function Stars({count,glow}){
+  return <div style={{display:"flex",gap:5,justifyContent:"center",margin:"10px 0"}}>
+    {[0,1,2,3,4].map(i=><span key={i} style={{fontSize:22,filter:i<count?`drop-shadow(0 0 10px ${glow})`:"grayscale(1) opacity(.18)",transition:`all 0.3s ${i*110}ms`}}>⭐</span>)}
+  </div>;
+}
+function ChestScreen({unlockedKernels, placement, onClaim}){
+  const[phase,setPhase]=useState("idle");
+  const[reward,setReward]=useState(null);
+  const open=()=>{
+    setPhase("shaking");
+    setTimeout(()=>{ setReward(rollChest(placement)); setPhase("reveal"); },1400);
+  };
+  const rar = reward ? RARITY[reward.rarity] : null;
+  const isDupe = reward && unlockedKernels.some(k=>k.id===reward.id);
+  const dupeCount = reward ? unlockedKernels.filter(k=>k.id===reward.id).length : 0;
+
+  // Placement label & color
+  const isWin = placement === 1;
+  const placeBadge = placement===1 ? "🏆 #1 WINNER" : placement<=3 ? `🥈 Top 3` : placement<=10 ? `🎯 Top 10` : placement<=20 ? `👍 Top 20` : `💀 #${placement}`;
+  const placeColor = placement===1?"#FFD700":placement<=3?"#C0C0C0":placement<=10?"#CD7F32":"#888";
+
+  // Compute boosted odds display for this placement
+  const boostedOdds = getOddsForPlacement(placement);
+
+  return(
+    <div style={{minHeight:"100vh",background:"radial-gradient(ellipse at center,#1a0a2e,#0d0500 70%)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Courier New',monospace",color:"#fff",padding:24}}>
+
+      {/* Placement badge */}
+      <div style={{fontSize:13,fontWeight:900,color:placeColor,textShadow:`0 0 14px ${placeColor}`,letterSpacing:3,marginBottom:4}}>{placeBadge}</div>
+      <div style={{fontSize:22,fontWeight:900,color:"#FFD700",textShadow:"0 0 20px #FFD700",marginBottom:4}}>🎁 REWARD TIME!</div>
+      <div style={{color:"#666",marginBottom:6,fontSize:12}}>Every game earns a chest. Better placement = better odds.</div>
+
+      {/* Odds strip */}
+      {phase==="idle"&&<div style={{display:"flex",gap:10,marginBottom:28,flexWrap:"wrap",justifyContent:"center"}}>
+        {Object.entries(RARITY).reverse().map(([key,cfg])=>{
+          const pct=boostedOdds[key];
+          const baseChance=Math.round(cfg.chance*100);
+          const boosted=pct>baseChance;
+          const nerfed=pct<baseChance;
+          return <div key={key} style={{textAlign:"center",padding:"6px 10px",background:"rgba(255,255,255,.04)",borderRadius:10,border:`1px solid ${cfg.color}44`,minWidth:64}}>
+            <div style={{display:"flex",gap:2,justifyContent:"center",marginBottom:3}}>{[...Array(cfg.stars)].map((_,i)=><span key={i} style={{fontSize:8,color:cfg.color}}>⭐</span>)}</div>
+            <div style={{fontSize:10,color:cfg.color,fontWeight:700}}>{pct}%</div>
+            {boosted&&<div style={{fontSize:8,color:"#66FF88"}}>▲ boosted</div>}
+            {nerfed&&<div style={{fontSize:8,color:"#FF6644"}}>▼ reduced</div>}
+          </div>;
+        })}
+      </div>}
+
+      {phase==="idle"&&<div style={{textAlign:"center"}}>
+        <div onClick={open} style={{fontSize:96,cursor:"pointer",display:"inline-block",filter:`drop-shadow(0 0 24px ${isWin?"#FFD700":"#FF8C00"})`,transition:"transform .2s"}}
+          onMouseOver={e=>e.currentTarget.style.transform="scale(1.1) translateY(-8px)"}
+          onMouseOut={e=>e.currentTarget.style.transform="scale(1)"}>
+          {isWin?"🏆":"🎁"}
+        </div>
+        <div style={{color:"#555",fontSize:12,marginTop:10}}>Tap to open</div>
+      </div>}
+
+      {phase==="shaking"&&<div style={{fontSize:96,animation:"chestShake .12s infinite"}}>{isWin?"🏆":"🎁"}</div>}
+
+      {phase==="reveal"&&reward&&rar&&<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,animation:"popIn .6s ease"}}>
+        <div style={{background:`radial-gradient(circle,${rar.bg},#0d0d0d 75%)`,border:`3px solid ${rar.color}`,borderRadius:24,padding:"24px 44px",boxShadow:`0 0 50px ${rar.glow}66`,textAlign:"center",position:"relative"}}>
+
+          {/* Dupe badge — top-right corner */}
+          {isDupe&&<div style={{position:"absolute",top:10,right:12,background:"rgba(0,0,0,.7)",border:"1px solid #555",borderRadius:6,padding:"2px 8px",fontSize:10,color:"#888"}}>
+            ×{dupeCount+1} DUPE
+          </div>}
+
+          <div style={{fontSize:78,filter:`drop-shadow(0 0 24px ${rar.glow})`,animation:"float 2s ease-in-out infinite"}}>{reward.emoji}</div>
+          <Stars count={rar.stars} glow={rar.glow}/>
+          <div style={{fontSize:20,fontWeight:900,color:rar.color,textShadow:`0 0 12px ${rar.glow}`}}>{reward.name}</div>
+          <div style={{fontSize:11,color:rar.color,opacity:.7,letterSpacing:2,marginTop:4}}>{rar.label.toUpperCase()}</div>
+
+          {isDupe
+            ? <div style={{marginTop:10,padding:"6px 14px",background:"rgba(255,255,255,.05)",borderRadius:8,fontSize:11,color:"#888"}}>
+                Duplicate #{dupeCount+1} — already in collection
+              </div>
+            : <div style={{marginTop:10,padding:"6px 14px",background:`rgba(${rar.color==="#FFD700"?"255,215,0":"100,200,100"},.08)`,borderRadius:8,fontSize:11,color:"#66BB6A"}}>
+                ✨ New skin unlocked!
+              </div>
+          }
+        </div>
+
+        <button onClick={()=>onClaim(reward)} style={{background:`linear-gradient(135deg,${rar.bg},#111)`,color:rar.color,border:`2px solid ${rar.color}`,borderRadius:12,padding:"12px 32px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"monospace",boxShadow:`0 0 16px ${rar.glow}55`}}>
+          ✓ Claim & Return to Lobby
+        </button>
+      </div>}
+
+      <style>{`
+        @keyframes chestShake{0%{transform:rotate(-8deg) scale(1.08)}50%{transform:rotate(8deg) scale(1.13)}100%{transform:rotate(-8deg) scale(1.08)}}
+        @keyframes popIn{0%{transform:scale(.2);opacity:0}60%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}
+        @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+      `}</style>
+    </div>
+  );
+}
+
+// ─── COLLECTION ───────────────────────────────────────────────
+function CollectionScreen({unlockedKernels,onClose}){
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.96)",zIndex:200,overflowY:"auto",padding:20,fontFamily:"monospace"}}>
+      <div style={{maxWidth:820,margin:"0 auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <div style={{fontSize:20,fontWeight:900,color:"#FFD700"}}>📚 Kernel Collection ({unlockedKernels.length}/{KERNELS.length})</div>
+          <button onClick={onClose} style={{background:"none",border:"1px solid #555",color:"#aaa",padding:"8px 16px",borderRadius:8,cursor:"pointer",fontFamily:"monospace"}}>✕</button>
+        </div>
+        {Object.entries(RARITY).map(([key,cfg])=>{
+          const pool=KERNELS.filter(k=>k.rarity===key);
+          return <div key={key} style={{marginBottom:24}}>
+            <div style={{fontSize:12,fontWeight:700,color:cfg.color,letterSpacing:2,marginBottom:8,display:"flex",alignItems:"center",gap:5}}>
+              {[...Array(cfg.stars)].map((_,i)=><span key={i}>⭐</span>)} {cfg.label.toUpperCase()} ({pool.filter(k=>unlockedKernels.some(u=>u.id===k.id)).length}/{pool.length})
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+              {pool.map(k=>{
+                const owned=unlockedKernels.some(u=>u.id===k.id);
+                const copies=unlockedKernels.filter(u=>u.id===k.id).length;
+                return <div key={k.id} style={{background:owned?`radial-gradient(circle,${cfg.bg},#111)`:"#111",border:`2px solid ${owned?cfg.color:"#2a2a2a"}`,borderRadius:12,padding:"12px 14px",textAlign:"center",width:86,opacity:owned?1:.32,boxShadow:owned?`0 0 14px ${cfg.glow}44`:"none",position:"relative"}}>
+                  {copies>1&&<div style={{position:"absolute",top:4,right:5,background:"rgba(0,0,0,.8)",border:`1px solid ${cfg.color}66`,borderRadius:4,padding:"1px 5px",fontSize:9,color:cfg.color}}>×{copies}</div>}
+                  <div style={{fontSize:28,filter:owned?`drop-shadow(0 0 8px ${cfg.glow})`:"grayscale(1)"}}>{owned?k.emoji:"❓"}</div>
+                  <div style={{fontSize:9,color:owned?"#ddd":"#333",marginTop:4}}>{owned?k.name:"???"}</div>
+                </div>;
+              })}
+            </div>
+          </div>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── SAVE / LOAD — MULTI-ACCOUNT WITH PIN ─────────────────────
+const ACCOUNTS_KEY = "popcornbattle_accounts_v1";  // stores all user accounts
+const SESSION_KEY  = "popcornbattle_session_v1";   // stores who is currently logged in
+
+function loadAccounts(){
+  try{ return JSON.parse(localStorage.getItem(ACCOUNTS_KEY)||"{}"); }
+  catch(e){ return {}; }
+}
+function saveAccounts(accounts){
+  try{ localStorage.setItem(ACCOUNTS_KEY,JSON.stringify(accounts)); }catch(e){}
+}
+function loadSession(){
+  try{ return JSON.parse(localStorage.getItem(SESSION_KEY)||"null"); }
+  catch(e){ return null; }
+}
+function saveSession(username){
+  try{ localStorage.setItem(SESSION_KEY,JSON.stringify(username)); }catch(e){}
+}
+function clearSession(){
+  try{ localStorage.removeItem(SESSION_KEY); }catch(e){}
+}
+function getAccount(username){
+  const accounts=loadAccounts();
+  return accounts[username.toLowerCase()]||null;
+}
+function createAccount(username, pin){
+  const accounts=loadAccounts();
+  const key=username.toLowerCase();
+  accounts[key]={ username, pin, unlockedKernelIds:[KERNELS[0].id], selectedKernelId:KERNELS[0].id, selectedAbility:"shield", gameMode:"solo" };
+  saveAccounts(accounts);
+  return accounts[key];
+}
+function updateAccount(username, data){
+  const accounts=loadAccounts();
+  const key=username.toLowerCase();
+  if(accounts[key]) accounts[key]={...accounts[key],...data};
+  saveAccounts(accounts);
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────
+export default function PopcornBattle(){
+  // ── load session (who was last logged in)
+  const sessionUser = loadSession();
+  const sessionAccount = sessionUser ? getAccount(sessionUser) : null;
+
+  const[screen,setScreen]=useState(sessionAccount ? "lobby" : "login");
+  const[username,setUsername]=useState(sessionAccount?.username||"");
+  const[usernameInput,setUsernameInput]=useState("");
+  const[pinInput,setPinInput]=useState("");         // 4-digit PIN entry
+  const[loginMode,setLoginMode]=useState("new");   // "new" | "returning"
+  const[roomCode,setRoomCode]=useState("");
+  const[roomInput,setRoomInput]=useState("");
+  const[gameMode,setGameMode]=useState(sessionAccount?.gameMode||"solo");
+  const[selectedKernel,setSelectedKernel]=useState(()=>{
+    if(sessionAccount?.selectedKernelId) return KERNELS.find(k=>k.id===sessionAccount.selectedKernelId)||KERNELS[0];
+    return KERNELS[0];
+  });
+  const[selectedAbility,setSelectedAbility]=useState(sessionAccount?.selectedAbility||"shield");
+  const[unlockedKernels,setUnlockedKernels]=useState(()=>{
+    if(sessionAccount?.unlockedKernelIds?.length)
+      return sessionAccount.unlockedKernelIds.map(id=>KERNELS.find(k=>k.id===id)||KERNELS[0]);
+    return [KERNELS[0]];
+  });
+  const[showCollection,setShowCollection]=useState(false);
+  const[error,setError]=useState("");
+  const[countdown,setCountdown]=useState(null);
+  const[lobbyBots,setLobbyBots]=useState([]);
+  const[placement,setPlacement]=useState(60);
+
+  // ── auto-save to account whenever anything changes
+  useEffect(()=>{
+    if(!username) return;
+    updateAccount(username,{
+      gameMode,
+      selectedKernelId: selectedKernel.id,
+      selectedAbility,
+      unlockedKernelIds: unlockedKernels.map(k=>k.id),
+    });
+  },[username,gameMode,selectedKernel,selectedAbility,unlockedKernels]);
+
+  function buildLobby(mode){const m=GAME_MODES.find(x=>x.id===mode);setLobbyBots(Array.from({length:m.teamSize-1},()=>({name:rndBotName(),k:rndKernel()})));}
+
+  // Build lobby on first render if session exists
+  useEffect(()=>{ if(sessionAccount) buildLobby(sessionAccount.gameMode||"solo"); },[]);
+
+  function handleLogin(){
+    const uname=usernameInput.trim();
+    if(!uname){setError("Enter a username!");return;}
+    if(pinInput.length!==4||!/^\d{4}$/.test(pinInput)){setError("PIN must be exactly 4 digits!");return;}
+
+    const existing=getAccount(uname);
+    if(loginMode==="returning"){
+      if(!existing){setError("Account not found. Switch to New Account.");return;}
+      if(existing.pin!==pinInput){setError("Wrong PIN!");return;}
+      // Login success — load their data
+      setUsername(existing.username);
+      setUnlockedKernels(existing.unlockedKernelIds.map(id=>KERNELS.find(k=>k.id===id)||KERNELS[0]));
+      setSelectedKernel(KERNELS.find(k=>k.id===existing.selectedKernelId)||KERNELS[0]);
+      setSelectedAbility(existing.selectedAbility||"shield");
+      setGameMode(existing.gameMode||"solo");
+      saveSession(existing.username);
+      setScreen("lobby");
+      buildLobby(existing.gameMode||"solo");
+      setError("");
+    } else {
+      if(existing){setError("Username taken! Switch to Returning Player.");return;}
+      const acct=createAccount(uname,pinInput);
+      setUsername(acct.username);
+      saveSession(acct.username);
+      setScreen("lobby");
+      buildLobby("solo");
+      setError("");
+    }
+  }
+
+  function handleLogout(){
+    clearSession();
+    setUsername(""); setUsernameInput(""); setPinInput("");
+    setScreen("login"); setLoginMode("new");
+  }
+  function handleCreate(){setRoomCode(genCode());setError("");buildLobby(gameMode);}
+  function handleJoin(){if(!roomInput.trim()){setError("Enter a room code!");return;}setRoomCode(roomInput.trim().toUpperCase());setError("");buildLobby(gameMode);}
+
+  useEffect(()=>{
+    if(countdown===null)return;
+    if(countdown===0){setScreen("ability");setCountdown(null);return;}
+    const t=setTimeout(()=>setCountdown(c=>c-1),1000);return()=>clearTimeout(t);
+  },[countdown]);
+
+  function handleGameEnd(place){ setPlacement(place||60); setScreen("chest"); }
+  function handleClaim(k){
+    // Always add — dupes are allowed, collection tracks how many copies
+    setUnlockedKernels(p=>[...p,k]);
+    setScreen("lobby");
+    buildLobby(gameMode);
+  }
+  const S={fontFamily:"'Courier New',monospace",color:"#fff"};
+
+  if(screen==="login") return(
+    <div style={{...S,minHeight:"100vh",background:"radial-gradient(ellipse at 50% 30%,#3d1a00,#0d0500)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div style={{fontSize:70,filter:"drop-shadow(0 0 30px #FFD700)",marginBottom:4}}>🍿</div>
+      <div style={{fontSize:27,fontWeight:900,color:"#FFD700",textShadow:"0 0 30px #FFD700",letterSpacing:4,marginBottom:6}}>POPCORN BATTLE</div>
+      <div style={{color:"#777",fontSize:12,letterSpacing:3,marginBottom:32}}>60-PLAYER BATTLE ROYALE</div>
+
+      {/* New / Returning toggle */}
+      <div style={{display:"flex",gap:0,marginBottom:24,border:"1px solid rgba(255,165,0,.3)",borderRadius:10,overflow:"hidden"}}>
+        {["new","returning"].map(mode=>(
+          <button key={mode} onClick={()=>{setLoginMode(mode);setError("");}}
+            style={{padding:"9px 24px",fontSize:12,fontWeight:700,letterSpacing:1,cursor:"pointer",fontFamily:"monospace",border:"none",
+              background:loginMode===mode?"rgba(255,165,0,.22)":"transparent",
+              color:loginMode===mode?"#FFD700":"#555",transition:"all .15s"}}>
+            {mode==="new"?"✨ NEW ACCOUNT":"🔑 RETURNING"}
+          </button>
+        ))}
+      </div>
+
+      <div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,165,0,.25)",borderRadius:18,padding:"28px 36px",display:"flex",flexDirection:"column",gap:12,minWidth:300,maxWidth:360,width:"100%"}}>
+        <div style={{fontSize:11,color:"#555",letterSpacing:1,marginBottom:2}}>
+          {loginMode==="new" ? "Create your account" : "Welcome back!"}
+        </div>
+
+        <input value={usernameInput} onChange={e=>setUsernameInput(e.target.value)}
+          onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+          placeholder="Username..." maxLength={16}
+          style={{background:"rgba(255,255,255,.07)",border:"1px solid rgba(255,165,0,.35)",borderRadius:10,padding:"11px 14px",color:"#fff",fontSize:15,fontFamily:"monospace",outline:"none"}}/>
+
+        {/* PIN input — 4 digit boxes */}
+        <div>
+          <div style={{fontSize:11,color:"#666",marginBottom:6,letterSpacing:1}}>4-DIGIT PIN</div>
+          <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+            {[0,1,2,3].map(i=>(
+              <div key={i} style={{width:44,height:52,background:"rgba(255,255,255,.06)",border:`1px solid ${pinInput.length>i?"rgba(255,165,0,.6)":"rgba(255,255,255,.1)"}`,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,color:"#FFD700",fontWeight:700,transition:"border-color .15s"}}>
+                {pinInput[i] ? "●" : ""}
+              </div>
+            ))}
+          </div>
+          {/* Hidden input for PIN */}
+          <input
+            value={pinInput}
+            onChange={e=>{ const v=e.target.value.replace(/\D/g,"").slice(0,4); setPinInput(v); }}
+            onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+            type="tel" inputMode="numeric" maxLength={4}
+            placeholder="tap to enter PIN"
+            style={{marginTop:8,width:"100%",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,padding:"8px 12px",color:"#aaa",fontFamily:"monospace",fontSize:13,outline:"none",textAlign:"center",letterSpacing:4}}/>
+        </div>
+
+        {error&&<div style={{color:"#FF4444",fontSize:12,textAlign:"center"}}>{error}</div>}
+
+        <button onClick={handleLogin} style={{background:"linear-gradient(135deg,#FFD700,#FF8C00)",color:"#1a0000",border:"none",borderRadius:12,padding:13,fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"monospace",letterSpacing:2,marginTop:4}}>
+          {loginMode==="new"?"🍿 CREATE & PLAY":"🍿 LOG IN"}
+        </button>
+
+        <div style={{fontSize:10,color:"#333",textAlign:"center",marginTop:2}}>
+          {loginMode==="new"?"Your PIN keeps your collection safe across sessions.":"Your username and PIN restore your full collection."}
+        </div>
+      </div>
+    </div>
+  );
+
+  if(screen==="lobby") return(
+    <div style={{...S,minHeight:"100vh",background:"radial-gradient(ellipse at 50% 0%,#1a0033,#0d0500)",display:"flex",flexDirection:"column",alignItems:"center",padding:16}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,marginTop:8,flexWrap:"wrap",justifyContent:"center"}}>
+        <div style={{fontSize:20,fontWeight:900,color:"#FFD700"}}>🍿 {username}</div>
+        {roomCode&&<div style={{background:"rgba(255,215,0,.12)",border:"1px solid #FFD700",borderRadius:8,padding:"3px 14px",fontSize:17,fontWeight:900,color:"#FFD700",letterSpacing:4}}>{roomCode}</div>}
+        <button onClick={()=>setShowCollection(true)} style={{background:"rgba(255,255,255,.06)",border:"1px solid #555",color:"#aaa",borderRadius:8,padding:"5px 12px",fontSize:12,cursor:"pointer",fontFamily:"monospace"}}>📚 Collection</button>
+        <div style={{fontSize:10,color:"#2a6",background:"rgba(0,200,80,.06)",border:"1px solid rgba(0,200,80,.2)",borderRadius:6,padding:"3px 10px",letterSpacing:1}}>💾 Saved</div>
+        <button onClick={handleLogout} style={{background:"rgba(255,100,50,.08)",border:"1px solid rgba(255,100,50,.3)",color:"#FF8866",borderRadius:6,padding:"3px 10px",fontSize:10,cursor:"pointer",fontFamily:"monospace"}}>⬅ Log Out</button>
+      </div>
+      <div style={{display:"flex",gap:16,flexWrap:"wrap",justifyContent:"center",width:"100%",maxWidth:820}}>
+        <div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,165,0,.2)",borderRadius:14,padding:"18px 20px",flex:"1 1 200px",minWidth:200}}>
+          <div style={{fontSize:11,color:"#888",marginBottom:10,fontWeight:700,letterSpacing:2}}>ROOM</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <button onClick={handleCreate} style={{background:"rgba(255,165,0,.12)",border:"1px solid #FFA500",color:"#FFA500",borderRadius:8,padding:10,cursor:"pointer",fontFamily:"monospace",fontWeight:700}}>+ Create Room</button>
+            <div style={{display:"flex",gap:6}}>
+              <input value={roomInput} onChange={e=>setRoomInput(e.target.value)} placeholder="Room code..." maxLength={8} style={{flex:1,background:"rgba(255,255,255,.07)",border:"1px solid #444",borderRadius:8,padding:8,color:"#fff",fontFamily:"monospace",fontSize:13,outline:"none"}}/>
+              <button onClick={handleJoin} style={{background:"rgba(100,200,100,.12)",border:"1px solid #66BB6A",color:"#66BB6A",borderRadius:8,padding:"8px 10px",cursor:"pointer",fontFamily:"monospace",fontWeight:700}}>Go</button>
+            </div>
+            {error&&<div style={{color:"#FF4444",fontSize:11}}>{error}</div>}
+          </div>
+        </div>
+        <div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,165,0,.2)",borderRadius:14,padding:"18px 20px",flex:"1 1 180px",minWidth:180}}>
+          <div style={{fontSize:11,color:"#888",marginBottom:10,fontWeight:700,letterSpacing:2}}>GAME MODE</div>
+          {GAME_MODES.map(m=><button key={m.id} onClick={()=>{setGameMode(m.id);buildLobby(m.id);}} style={{display:"block",width:"100%",marginBottom:6,background:gameMode===m.id?"rgba(255,165,0,.18)":"transparent",border:`1px solid ${gameMode===m.id?"#FFA500":"#333"}`,color:gameMode===m.id?"#FFA500":"#777",borderRadius:8,padding:"7px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:13,textAlign:"left"}}>{m.icon} {m.label} <span style={{opacity:.4,fontSize:11}}>({m.teamSize}p)</span></button>)}
+        </div>
+        <div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,165,0,.2)",borderRadius:14,padding:"18px 20px",flex:"1 1 220px",minWidth:220}}>
+          <div style={{fontSize:11,color:"#888",marginBottom:10,fontWeight:700,letterSpacing:2}}>KERNEL ({unlockedKernels.length}/{KERNELS.length})</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,maxHeight:140,overflowY:"auto"}}>
+            {unlockedKernels.map(k=>{const rar=RARITY[k.rarity];return <button key={k.id} onClick={()=>setSelectedKernel(k)} title={`${k.name} (${rar.label})`} style={{background:selectedKernel.id===k.id?rar.bg:"rgba(255,255,255,.05)",border:`2px solid ${selectedKernel.id===k.id?rar.color:"#333"}`,borderRadius:10,padding:"6px 8px",cursor:"pointer",fontSize:20,boxShadow:selectedKernel.id===k.id?`0 0 12px ${rar.glow}88`:"none"}}>{k.emoji}</button>;})}
+          </div>
+          <div style={{fontSize:11,color:RARITY[selectedKernel.rarity].color,marginTop:8}}>{selectedKernel.name} — {RARITY[selectedKernel.rarity].label}</div>
+        </div>
+      </div>
+      {lobbyBots.length>0&&<div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,165,0,.15)",borderRadius:12,padding:"14px 20px",marginTop:16,minWidth:240}}>
+        <div style={{fontSize:11,color:"#888",marginBottom:8,fontWeight:700,letterSpacing:2}}>YOUR TEAM</div>
+        <div style={{display:"flex",flexDirection:"column",gap:5}}>
+          <div style={{display:"flex",gap:8,alignItems:"center",fontSize:13}}><span>👤</span><span style={{color:"#fff"}}>{username}</span><span style={{fontSize:10,color:"#FFD700",background:"rgba(255,215,0,.1)",borderRadius:4,padding:"1px 6px"}}>YOU</span></div>
+          {lobbyBots.map((b,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"center",fontSize:13}}><span>{b.k.emoji}</span><span style={{color:"#555"}}>{b.name}</span></div>)}
+        </div>
+      </div>}
+      {countdown!==null
+        ?<div style={{fontSize:80,fontWeight:900,color:"#FFD700",textShadow:"0 0 40px #FFD700",marginTop:20}}>{countdown||"🍿"}</div>
+        :<button onClick={()=>setCountdown(3)} disabled={!roomCode} style={{marginTop:20,background:roomCode?"linear-gradient(135deg,#FFD700,#FF8C00)":"#333",color:roomCode?"#1a0000":"#666",border:"none",borderRadius:14,padding:"15px 48px",fontSize:17,fontWeight:900,cursor:roomCode?"pointer":"not-allowed",fontFamily:"monospace",letterSpacing:2}}>{roomCode?"🍿 START GAME!":"Create or Join a Room first"}</button>}
+      {showCollection&&<CollectionScreen unlockedKernels={unlockedKernels} onClose={()=>setShowCollection(false)}/>}
+    </div>
+  );
+
+  if(screen==="ability") return(
+    <div style={{...S,minHeight:"100vh",background:"radial-gradient(ellipse,#0d0033,#0d0500)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div style={{fontSize:22,fontWeight:900,color:"#FFD700",marginBottom:4}}>Choose Your Ability</div>
+      <div style={{color:"#555",fontSize:12,marginBottom:28,letterSpacing:1}}>DODGE the boss! Move around the frying pan to survive.</div>
+      <div style={{display:"flex",gap:8,marginBottom:22,flexWrap:"wrap",justifyContent:"center"}}>
+        {BOSSES.map((b,i)=><div key={b.id} style={{textAlign:"center",padding:"8px 12px",background:"rgba(255,255,255,.04)",borderRadius:10,border:`1px solid ${b.color}44`}}>
+          <div style={{fontSize:28}}>{b.icon}</div>
+          <div style={{fontSize:9,color:b.color,marginTop:4}}>Boss {i+1}</div>
+          <div style={{fontSize:8,color:"#555"}}>4 phases</div>
+        </div>)}
+      </div>
+      <div style={{display:"flex",gap:16,flexWrap:"wrap",justifyContent:"center",marginBottom:36}}>
+        {ABILITIES.map(a=><div key={a.id} onClick={()=>setSelectedAbility(a.id)} style={{background:selectedAbility===a.id?"rgba(255,255,255,.1)":"rgba(255,255,255,.03)",border:`2px solid ${selectedAbility===a.id?a.color:"#333"}`,borderRadius:18,padding:"22px 26px",cursor:"pointer",textAlign:"center",minWidth:140,boxShadow:selectedAbility===a.id?`0 0 24px ${a.color}55`:"none",transition:"all .2s"}}>
+          <div style={{fontSize:40,marginBottom:10}}>{a.icon}</div>
+          <div style={{fontSize:15,fontWeight:700,color:selectedAbility===a.id?a.color:"#ddd"}}>{a.name}</div>
+          <div style={{fontSize:11,color:"#666",marginTop:6}}>{a.desc}</div>
+        </div>)}
+      </div>
+      <button onClick={()=>setScreen("game")} style={{background:"linear-gradient(135deg,#FFD700,#FF8C00)",color:"#1a0000",border:"none",borderRadius:14,padding:"14px 48px",fontSize:16,fontWeight:900,cursor:"pointer",fontFamily:"monospace",letterSpacing:2}}>🍿 ENTER THE PAN</button>
+    </div>
+  );
+
+  if(screen==="game") return(
+    <div style={{...S,minHeight:"100vh",background:"#080400",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:8}}>
+      <GameCanvas key={Date.now()} playerKernel={selectedKernel} ability={selectedAbility} gameMode={gameMode} onGameEnd={handleGameEnd}/>
+    </div>
+  );
+
+  if(screen==="chest") return <ChestScreen unlockedKernels={unlockedKernels} placement={placement} onClaim={handleClaim}/>;
+
+  if(screen==="gameOver"){ handleClaim(rollChest()); return null; } // shouldn't reach here anymore
+
+  return null;
+}
